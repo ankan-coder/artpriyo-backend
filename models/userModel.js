@@ -35,6 +35,10 @@ const userSchema = new mongoose.Schema(
       trim: true,
       select: true,
     },
+    description: {
+      type: String,
+      required: false,
+    },
   },
   { timestamps: true }
 );

@@ -99,4 +99,70 @@ const loginController = async (req, res) => {
   }
 };
 
-module.exports = { registerController, loginController };
+const fetchUserDetails = async (req, res) => {
+  try {
+    // `req.user` is set by `authMiddleware`
+    const user = await userModel.findById(req.user.id).select("-password"); // Exclude password
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({ success: true, user });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).send({ message: "Error in Fetch User Details API" });
+  }
+};
+
+const updateUserDetails = async (req, res) => {
+  try {
+    const userId = req.user.id; // Extracted from token via authMiddleware
+
+    console.log(req.user.id);
+
+    const { firstName, lastName, userName, description } = req.body;
+
+    const updatedFields = {};
+    if (firstName) updatedFields.firstName = firstName;
+    if (lastName) updatedFields.lastName = lastName;
+    if (userName) updatedFields.userName = userName;
+    if (description) updatedFields.description = description;
+
+    if (Object.keys(updatedFields).length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No fields to update" });
+    }
+
+    const updatedUser = await userModel.findByIdAndUpdate(
+      userId,
+      { $set: updatedFields },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedUser) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "User updated successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.log(error);
+    return res
+      .status(500)
+      .send({ message: "Error in Update User Details API" });
+  }
+};
+
+module.exports = {
+  registerController,
+  loginController,
+  fetchUserDetails,
+  updateUserDetails,
+};
