@@ -33,7 +33,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Please add Password"],
       trim: true,
-      select: false,
+      select: true,
     },
   },
   { timestamps: true }
