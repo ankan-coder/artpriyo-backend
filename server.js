@@ -28,6 +28,7 @@ app.get("", (req, res) => {
 });
 
 app.use("/api/v1/auth", require("./routes/userRoutes"));
+app.use("/api/event", require("./routes/eventRoutes"));
 
 // PORT
 const PORT = process.env.PORT || 8080;
