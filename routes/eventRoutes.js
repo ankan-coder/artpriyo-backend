@@ -85,18 +85,18 @@ router.get("/event/:id", async (req, res) => {
 });
 
 // Delete Event
-router.delete("/event/:id", async (req, res) => {
-  try {
-    const event = await Event.findByIdAndDelete(req.params.id);
-    if (!event) {
-      return res.status(404).json({ error: "Event not found" });
+// DELETE event by ID
+router.delete("/delete-event/:id", async (req, res) => {
+    try {
+      const event = await Event.findByIdAndDelete(req.params.id);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      res.status(200).json({ message: "Event deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Server error", error });
     }
-    res.status(200).json({ message: "Event deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting event:", error);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
+  });
 
 router.put("/update-event/:id", async (req, res) => {
   try {
