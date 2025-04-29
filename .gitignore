@@ -48,3 +48,5 @@ coverage/
 
 # Yarn Integrity file
 .yarn-integrity 
+
+# Ignore all files in the 'node_modules' directory
