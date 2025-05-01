@@ -8,14 +8,14 @@ const transporter = nodemailer.createTransport({
   // service: "gmail",
   auth: {
     // user: "try.ankan@gmail.com",
-    user: 'info.tellyoudoc.com',
+    user: 'info@tellyoudoc.com',
     pass: "Tellyoudoc@1234", // Replace with your Gmail App Password
   },
 });
 
 const sendOTPEmail = async ({ to, name, otp }) => {
   const mailOptions = {
-    from: "try.ankan@gmail.com",
+    from: "",
     to,
     subject: 'Password Reset OTP - Admin Portal',
     html: `
