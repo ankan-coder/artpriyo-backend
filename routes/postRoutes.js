@@ -7,9 +7,10 @@ const { v4: uuidv4 } = require("uuid");
 const axios = require("axios");
 const FormData = require("form-data");
 const JWT = require("jsonwebtoken");
-const { 
-  toggleLike, 
-  getLikeStatus, 
+
+const {
+  toggleLike,
+  getLikeStatus,
   getTrendingPosts,
   savePost,
   unsavePost,
@@ -17,10 +18,18 @@ const {
   getSavedPosts,
   getUserPosts,
   updatePost,
-  deletePost
+  deletePost,
 } = require("../controllers/postController");
-const { addComment, getComments, deleteComment } = require("../controllers/commentController");
-const { submitReport, getAllReports, updateReportStatus } = require("../controllers/reportController");
+const {
+  addComment,
+  getComments,
+  deleteComment,
+} = require("../controllers/commentController");
+const {
+  submitReport,
+  getAllReports,
+  updateReportStatus,
+} = require("../controllers/reportController");
 
 const router = express.Router();
 
@@ -63,6 +72,8 @@ const uploadToCloudinary = async (mediaUri) => {
       isVideo ? "video" : "image"
     }/upload`;
 
+    console.log(JSON.stringify(formData));
+
     const response = await axios.post(cloudinaryUrl, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
@@ -94,9 +105,7 @@ router.post("/create-post", authMiddleware, async (req, res) => {
     }
 
     // Upload all media to Cloudinary
-    const mediaUrls = await Promise.all(
-      media.map(uploadToCloudinary)
-    );
+    const mediaUrls = await Promise.all(media.map(uploadToCloudinary));
 
     // Create and save the new post
     const newPost = new Post({
@@ -130,20 +139,20 @@ router.get("/get-all-posts", async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    
+
     // Find total count for pagination info
     const totalPosts = await Post.countDocuments();
-    
+
     // Find posts sorted by creation date (newest first)
     const posts = await Post.find()
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
-    
+
     // Check if request has authorization header (optional auth)
     const authHeader = req.headers.authorization;
     let userID = null;
-    
+
     if (authHeader) {
       try {
         const token = authHeader.split(" ")[1];
@@ -151,55 +160,57 @@ router.get("/get-all-posts", async (req, res) => {
         userID = decoded._id;
       } catch (err) {
         // Invalid token - proceed without user context
-        console.log("Invalid token in get-all-posts, proceeding without user context");
+        console.log(
+          "Invalid token in get-all-posts, proceeding without user context"
+        );
       }
     }
 
     const postsWithUserDetails = await Promise.all(
       posts.map(async (post) => {
         const user = await User.findById(post.userID);
-        
+
         // Convert post to plain object to allow adding custom properties
         const postObj = post.toObject();
-        
+
         // Add user data
         postObj.user = user;
-        
+
         // Add userHasLiked flag if user is authenticated
         if (userID) {
           postObj.userHasLiked = post.likedBy && post.likedBy.includes(userID);
         }
-        
+
         // Ensure the _id field is included (for frontend compatibility)
         postObj._id = postObj._id || post._id;
-        
+
         // For frontend compatibility (frontend expects likes to be an array)
         // We'll include both the numeric likes count and the likedBy array
         postObj.likesCount = post.likes;
         postObj.likes = post.likedBy || [];
-        
+
         // Include comments count
         postObj.commentsCount = post.commentsCount || 0;
 
         return postObj;
       })
     );
-    
+
     // Add metadata for pagination
     const totalPages = Math.ceil(totalPosts / limit);
     const hasNextPage = page < totalPages;
     const hasPrevPage = page > 1;
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       posts: postsWithUserDetails,
       pagination: {
         totalPosts,
         totalPages,
         currentPage: page,
         hasNextPage,
-        hasPrevPage
-      }
+        hasPrevPage,
+      },
     });
   } catch (error) {
     console.error("Error fetching posts:", error);
@@ -241,7 +252,12 @@ router.post("/report", authMiddleware, submitReport);
 router.get("/reports", authMiddleware, adminMiddleware, getAllReports);
 
 // Update report status (admin only)
-router.put("/report/:reportID", authMiddleware, adminMiddleware, updateReportStatus);
+router.put(
+  "/report/:reportID",
+  authMiddleware,
+  adminMiddleware,
+  updateReportStatus
+);
 
 // Save/unsave post routes
 router.post("/save/:postID", authMiddleware, savePost);
@@ -250,7 +266,7 @@ router.get("/check-saved/:postID", authMiddleware, checkSavedStatus);
 router.get("/saved-posts", authMiddleware, getSavedPosts);
 
 // Get posts made by the current user
-router.get('/user-posts', authMiddleware, getUserPosts);
+router.get("/user-posts/:userId?", authMiddleware, getUserPosts);
 
 // Update post route
 router.put("/:postID", authMiddleware, updatePost);

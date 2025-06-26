@@ -10,6 +10,9 @@ const {
   changePasswordController,
   logoutController,
   getUserDetailsController,
+  sendOtpForPasswordReset,
+  saveNewPassword,
+  verifyOtpForPasswordReset,
 } = require("../controllers/userController");
 const { tokenCheckController } = require("../controllers/tokenCheckController");
 const authMiddleware = require("../helpers/authMiddleware");
@@ -86,7 +89,7 @@ router.post("/check-username", authMiddleware, async (req, res) => {
     if (!userName) {
       return res.status(400).json({
         success: false,
-        message: "Username is required"
+        message: "Username is required",
       });
     }
 
@@ -94,21 +97,24 @@ router.post("/check-username", authMiddleware, async (req, res) => {
     if (userName.length < 3) {
       return res.status(400).json({
         success: false,
-        message: "Username must be at least 3 characters long"
+        message: "Username must be at least 3 characters long",
       });
     }
 
     // Check if username exists (case-insensitive)
     const existingUser = await userModel.findOne({
-      userName: { $regex: new RegExp(`^${userName}$`, 'i') }
+      userName: { $regex: new RegExp(`^${userName}$`, "i") },
     });
 
     // If username exists and it's not the current user's username
-    if (existingUser && existingUser._id.toString() !== req.user._id.toString()) {
+    if (
+      existingUser &&
+      existingUser._id.toString() !== req.user._id.toString()
+    ) {
       return res.status(200).json({
         success: true,
         available: false,
-        message: "Username is already taken"
+        message: "Username is already taken",
       });
     }
 
@@ -116,13 +122,86 @@ router.post("/check-username", authMiddleware, async (req, res) => {
     return res.status(200).json({
       success: true,
       available: true,
-      message: "Username is available"
+      message: "Username is available",
     });
   } catch (error) {
     console.error("Error checking username:", error);
     return res.status(500).json({
       success: false,
-      message: "Error checking username availability"
+      message: "Error checking username availability",
+    });
+  }
+});
+
+// Check username availability for registration || POST
+router.post("/check-username-registration", async (req, res) => {
+  try {
+    const { userName } = req.body;
+
+    if (!userName) {
+      return res.status(400).json({
+        success: false,
+        message: "Username is required",
+      });
+    }
+
+    // Check if username meets minimum length requirement
+    if (userName.length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: "Username must be at least 3 characters long",
+      });
+    }
+
+    // Check if username exists (case-insensitive)
+    const existingUser = await userModel.findOne({
+      userName: { $regex: new RegExp(`^${userName}$`, "i") },
+    });
+
+    // Username is available
+    if (!existingUser) {
+      return res.status(200).json({
+        success: true,
+        available: true,
+        message: "Username is available",
+      });
+    }
+
+    // If username exists
+    return res.status(201).json({
+      success: true,
+      available: false,
+      message: "Username is already taken",
+    });
+  } catch (error) {
+    console.error("Error checking username:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error checking username availability",
+    });
+  }
+});
+
+router.get("/get-balance", authMiddleware, async (req, res) => {
+  try {
+    const user = await userModel.findById(req.user._id, "balance");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      balance: user.balance,
+    });
+  } catch (error) {
+    console.error("Error fetching balance:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
     });
   }
 });
@@ -139,6 +218,15 @@ router.put("/change/password", authMiddleware, changePasswordController);
 
 // Search route
 router.post("/search", authMiddleware, searchController);
+
+// Send OTP || POST
+router.post("/sendotp", sendOtpForPasswordReset);
+
+// Verify OTP for password reset || POST
+router.post("/verify-otp", verifyOtpForPasswordReset);
+
+// Save new password || POST
+router.post("/reset-password", saveNewPassword);
 
 // export
 module.exports = router;

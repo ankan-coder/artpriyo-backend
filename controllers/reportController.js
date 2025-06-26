@@ -19,15 +19,15 @@ const submitReport = async (req, res) => {
 
     // Check if post exists
     let post;
-    
+
     // Try to find post by postID first
     post = await Post.findOne({ postID: postId });
-    
+
     // If not found, check if postID is a valid MongoDB ID and try to find by _id
     if (!post && mongoose.Types.ObjectId.isValid(postId)) {
       post = await Post.findById(postId);
     }
-    
+
     if (!post) {
       return res.status(404).json({
         success: false,
@@ -38,13 +38,13 @@ const submitReport = async (req, res) => {
     // Check if user already reported this post
     const existingReport = await Report.findOne({
       postID: post.postID,
-      userID: userID
+      userID: userID,
     });
 
     if (existingReport) {
-      return res.status(400).json({
+      return res.status(210).json({
         success: false,
-        message: "You have already reported this post",
+        message: "You've already reported the post",
       });
     }
 
@@ -54,7 +54,7 @@ const submitReport = async (req, res) => {
       postID: post.postID,
       userID,
       reason,
-      status: 'pending'
+      status: "pending",
     });
 
     await newReport.save();
@@ -84,7 +84,7 @@ const getAllReports = async (req, res) => {
       reports.map(async (report) => {
         const post = await Post.findOne({ postID: report.postID });
         const user = await User.findById(report.userID);
-        
+
         return {
           _id: report._id,
           reportID: report.reportID,
@@ -92,18 +92,22 @@ const getAllReports = async (req, res) => {
           status: report.status,
           createdAt: report.createdAt,
           updatedAt: report.updatedAt,
-          post: post ? {
-            _id: post._id,
-            postID: post.postID,
-            caption: post.caption,
-            media: post.media[0], // First media item for preview
-          } : null,
-          reporter: user ? {
-            _id: user._id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            userName: user.userName,
-          } : null
+          post: post
+            ? {
+                _id: post._id,
+                postID: post.postID,
+                caption: post.caption,
+                media: post.media[0], // First media item for preview
+              }
+            : null,
+          reporter: user
+            ? {
+                _id: user._id,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                userName: user.userName,
+              }
+            : null,
         };
       })
     );
@@ -129,7 +133,7 @@ const updateReportStatus = async (req, res) => {
     const { status } = req.body;
 
     // Check if status is valid
-    if (!['pending', 'reviewed', 'resolved', 'dismissed'].includes(status)) {
+    if (!["pending", "reviewed", "resolved", "dismissed"].includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status value",
@@ -137,11 +141,13 @@ const updateReportStatus = async (req, res) => {
     }
 
     // The admin check is now done by middleware
-    const report = await Report.findOne({ 
+    const report = await Report.findOne({
       $or: [
         { reportID },
-        ...(mongoose.Types.ObjectId.isValid(reportID) ? [{ _id: reportID }] : [])
-      ]
+        ...(mongoose.Types.ObjectId.isValid(reportID)
+          ? [{ _id: reportID }]
+          : []),
+      ],
     });
 
     if (!report) {
@@ -173,4 +179,4 @@ module.exports = {
   submitReport,
   getAllReports,
   updateReportStatus,
-}; 
+};

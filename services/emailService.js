@@ -2,20 +2,16 @@ const nodemailer = require('nodemailer');
 
 // Create a transporter using Gmail SMTP
 const transporter = nodemailer.createTransport({
-  host: 'smtpout.secureserver.net',
-  port: 465,
-  secure: true,
-  // service: "gmail",
+  service: "gmail",
   auth: {
-    // user: "try.ankan@gmail.com",
-    user: 'info@tellyoudoc.com',
-    pass: "Tellyoudoc@1234", // Replace with your Gmail App Password
+    user: "try.ankan@gmail.com",
+    pass: "wdwifxkkuixawkhm", // Replace with your Gmail App Password
   },
 });
 
 const sendOTPEmail = async ({ to, name, otp }) => {
   const mailOptions = {
-    from: "",
+    from: "try.ankan@gmail.com",
     to,
     subject: 'Password Reset OTP - Admin Portal',
     html: `

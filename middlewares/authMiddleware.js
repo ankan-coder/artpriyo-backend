@@ -1,5 +1,6 @@
 const JWT = require("jsonwebtoken");
 const userModel = require("../models/userModel");
+const Administrator = require("../models/Administrator");
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -16,26 +17,48 @@ const authMiddleware = async (req, res, next) => {
     // Verify token
     const decoded = JWT.verify(token, process.env.JWT_SECRET);
 
-    // Find user using either _id or userID from token
-    const user = await userModel.findOne({
-      $or: [
-        { _id: decoded._id },
-        { userID: decoded.userID }
-      ]
-    });
+    console.log("Decoded token:", decoded);
 
+    // Check if the token contains userType as administrator or user
+    let user;
+
+    if (decoded.userType === "administrator") {
+      // Find administrator using id from token
+      user = await Administrator.findOne({ _id: decoded.id || decoded._id });
+      console.log("Administrator lookup result:", user);
+    } else {
+      // Find regular user using id from token (could be stored as id or _id)
+      user = await userModel.findOne({
+        $or: [{ _id: decoded.id || decoded._id }, { userID: decoded.userID }],
+      });
+      console.log("User lookup result:", user);
+    }
+
+    // Check if user/administrator exists
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "User not found",
+        message:
+          decoded.userType === "administrator"
+            ? "Administrator not found"
+            : "User not found",
       });
+    } else {
+      console.log(
+        `${
+          decoded.userType === "administrator" ? "Administrator" : "User"
+        } found:`,
+        user
+      );
     }
 
-    // Add user to request object
+    // Add user/administrator to request object
     req.user = {
-      userID: user.userID,
+      userType: decoded.userType,
       _id: user._id,
       email: user.email,
+      ...(user.userID && { userID: user.userID }), // Add userID if it exists
+      ...(decoded.userType === "administrator" && { role: user.role }), // Add role for administrators
     };
 
     next();
@@ -48,4 +71,4 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
-module.exports = { authMiddleware }; 
+module.exports = { authMiddleware };

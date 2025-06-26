@@ -1,6 +1,10 @@
 const JWT = require("jsonwebtoken");
 const { hashPassword, comparePassword } = require("../helpers/authHelper");
-const { generateOTP, sendOTPEmail } = require("../helpers/emailService");
+const {
+  generateOTP,
+  sendOTPEmail,
+  sendForgotPasswordEmail,
+} = require("../helpers/emailService");
 const userModel = require("../models/userModel");
 const mongoose = require("mongoose");
 const Connection = require("../models/connectionModel");
@@ -29,72 +33,77 @@ const registerController = async (req, res) => {
       return res.status(400).json({ message: "Account type is required" });
     if (!email) return res.status(400).json({ message: "Email is required" });
     if (!password)
-      return res.status(400).json({ message: "Password is required" });
-
-    // Check if the user already exists
-    const existingUser = await userModel.findOne({ email });
-    if (existingUser) {
+      return res.status(400).json({ message: "Password is required" }); // Check if the email already exists
+    const existingEmail = await userModel.findOne({
+      email: email.toLowerCase(),
+    });
+    if (existingEmail) {
       return res.status(400).json({ message: "Email already exists" });
+    }
+
+    // Check if the username already exists
+    const existingUsername = await userModel.findOne({ userName });
+    if (existingUsername) {
+      return res.status(400).json({ message: "Username already taken" });
     }
 
     // Hash Password
     const hashedPassword = await hashPassword(password);
 
     // Generate a new ObjectId as userID
-    const userID = new mongoose.Types.ObjectId().toString();
-
-    // Save User
+    const userID = new mongoose.Types.ObjectId().toString(); // Save User
     const user = new userModel({
       userID,
       firstName,
       lastName,
       userName,
       accountType,
-      email,
+      email: email.toLowerCase(), // Ensure email is saved in lowercase
       password: hashedPassword,
       balance: 0,
     });
 
     await user.save();
 
-    // Success response
-    return res.status(201).json({
-      message: "User registered successfully",
-      user: { userID, firstName, lastName, userName, accountType, email },
-    });
-
     // Create Token
     const token = await JWT.sign({ _id: user._id }, process.env.JWT_SECRET, {
       expiresIn: "1d",
     });
 
-    // Undefined password
+    // Exclude password from response
     user.password = undefined;
-    res.status(200).send({ message: "Registered successfully", token, user });
+
+    // Success response with token
+    return res.status(201).json({
+      message: "User registered successfully",
+      token,
+      user: { userID, firstName, lastName, userName, accountType, email },
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error in register API" });
   }
 };
 
+// Login
 const loginController = async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       return res
-        .status(500)
+        .status(400)
         .json({ message: "Email and password are required" });
     }
     // Check if the user exists
-    const user = await userModel.findOne({ email });
+    const user = await userModel.findOne({ email: email.toLowerCase() }); // Ensure email is case-insensitive
     if (!user) {
-      return res.status(500).json({ message: "User not found" });
+      return res.status(404).json({ message: "User not found" });
     }
 
     // Password Check
     const match = await comparePassword(password, user.password);
     if (!match) {
-      return res.status(500).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: "Invalid email or password" });
     }
 
     // Create Token
@@ -102,23 +111,27 @@ const loginController = async (req, res) => {
       expiresIn: "30d",
     });
 
-    // Undefined password
+    // Exclude password from response
     user.password = undefined;
-    res.status(200).send({ message: "Logged in successfully", token, user });
+    return res
+      .status(200)
+      .json({ message: "Logged in successfully", token, user });
   } catch (error) {
     console.log(error);
     return res.status(500).send({ message: "Error in Login API" });
   }
 };
 
+// Fetch User Details
 const fetchUserDetails = async (req, res) => {
   try {
     // `req.user` is set by `authMiddleware`
-    const user = await userModel.findById(req.user.userID)
+    const user = await userModel
+      .findById(req.user.userID)
       .select("-password") // Exclude password
       .populate({
-        path: 'followersCount followingCount',
-        select: 'followersCount followingCount'
+        path: "followersCount followingCount",
+        select: "followersCount followingCount",
       });
 
     if (!user) {
@@ -128,19 +141,19 @@ const fetchUserDetails = async (req, res) => {
     // Get actual counts from connections
     const followersCount = await Connection.countDocuments({
       recipient: req.user.userID,
-      status: "accepted"
+      status: "accepted",
     });
 
     const followingCount = await Connection.countDocuments({
       requester: req.user.userID,
-      status: "accepted"
+      status: "accepted",
     });
 
     // Update the user object with real counts
     const userWithCounts = {
       ...user.toObject(),
       followersCount,
-      followingCount
+      followingCount,
     };
 
     res.status(200).json({ success: true, user: userWithCounts });
@@ -150,6 +163,7 @@ const fetchUserDetails = async (req, res) => {
   }
 };
 
+// Update User Details
 const updateUserDetails = async (req, res) => {
   try {
     const userId = req.user.userID; // Extracted from token via authMiddleware
@@ -194,17 +208,19 @@ const updateUserDetails = async (req, res) => {
   }
 };
 
+// Fetch User By ID
 const fetchUserById = async (req, res) => {
   try {
     const { userId } = req.params;
     const currentUserId = req.user.userID;
-    
+
     // Find user by ID
-    const user = await userModel.findById(userId)
+    const user = await userModel
+      .findById(userId)
       .select("-password") // Exclude password
       .populate({
-        path: 'followersCount followingCount',
-        select: 'followersCount followingCount'
+        path: "followersCount followingCount",
+        select: "followersCount followingCount",
       });
 
     if (!user) {
@@ -214,38 +230,41 @@ const fetchUserById = async (req, res) => {
     // Get actual counts from connections
     const followersCount = await Connection.countDocuments({
       recipient: userId,
-      status: "accepted"
+      status: "accepted",
     });
 
     const followingCount = await Connection.countDocuments({
       requester: userId,
-      status: "accepted"
+      status: "accepted",
     });
 
     // Check connection status
     const connection = await Connection.findOne({
       $or: [
         { requester: currentUserId, recipient: userId },
-        { requester: userId, recipient: currentUserId }
-      ]
+        { requester: userId, recipient: currentUserId },
+      ],
     });
 
-    const connectionStatus = connection ? {
-      isConnected: connection.status === "accepted",
-      isPending: connection.status === "pending",
-      isRequester: connection.requester.toString() === currentUserId.toString()
-    } : {
-      isConnected: false,
-      isPending: false,
-      isRequester: false
-    };
+    const connectionStatus = connection
+      ? {
+          isConnected: connection.status === "accepted",
+          isPending: connection.status === "pending",
+          isRequester:
+            connection.requester.toString() === currentUserId.toString(),
+        }
+      : {
+          isConnected: false,
+          isPending: false,
+          isRequester: false,
+        };
 
     // Update the user object with real counts and connection status
     const userWithCounts = {
       ...user.toObject(),
       followersCount,
       followingCount,
-      connectionStatus
+      connectionStatus,
     };
 
     res.status(200).json({ success: true, user: userWithCounts });
@@ -255,72 +274,67 @@ const fetchUserById = async (req, res) => {
   }
 };
 
+// Get User Statistics
 const getUserStats = async (req, res) => {
   try {
     const userId = req.user.userID;
-    
+
     // Get user details including wallet balance
-    const user = await userModel.findById(userId).select('balance');
-    
+    const user = await userModel.findById(userId).select("balance");
+
     // Get total posts count
     const postsCount = await Post.countDocuments({ userID: userId });
-    
+
     // Get followers and following counts
     const followersCount = await Connection.countDocuments({
       recipient: userId,
-      status: "accepted"
+      status: "accepted",
     });
-    
+
     const followingCount = await Connection.countDocuments({
       requester: userId,
-      status: "accepted"
+      status: "accepted",
     });
-    
+
     // Get total likes received and given
     const posts = await Post.find({ userID: userId });
-    const likesReceived = posts.reduce((total, post) => total + (post.likes || 0), 0);
-    
+    const likesReceived = posts.reduce(
+      (total, post) => total + (post.likes || 0),
+      0
+    );
+
     // Get total comments received and given
-    const commentsReceived = posts.reduce((total, post) => total + (post.commentsCount || 0), 0);
-    
+    const commentsReceived = posts.reduce(
+      (total, post) => total + (post.commentsCount || 0),
+      0
+    );
+
     // Get event participation stats
     const eventsJoined = await Event.countDocuments({
-      $or: [
-        { creator: userId },
-        { participants: userId }
-      ]
+      $or: [{ creator: userId }, { participants: userId }],
     });
-    
+
     // Get current date in YYYY-MM-DD format
-    const currentDate = new Date().toISOString().split('T')[0];
-    
+    const currentDate = new Date().toISOString().split("T")[0];
+
     const currentEvents = await Event.countDocuments({
-      $or: [
-        { creator: userId },
-        { participants: userId }
-      ],
+      $or: [{ creator: userId }, { participants: userId }],
       $and: [
         { startDate: { $lte: currentDate } },
-        { endDate: { $gte: currentDate } }
-      ]
+        { endDate: { $gte: currentDate } },
+      ],
     });
 
     // Get upcoming events
     const upcomingEvents = await Event.countDocuments({
-      $or: [
-        { creator: userId },
-        { participants: userId }
-      ],
-      startDate: { $gt: currentDate }
+      $or: [{ creator: userId }, { participants: userId }],
+      startDate: { $gt: currentDate },
     });
 
     // Get past events
     const pastEvents = await Event.countDocuments({
-      $or: [
-        { creator: userId },
-        { participants: userId }
-      ],
-      endDate: { $lt: currentDate }
+      $or: [{ creator: userId }, { participants: userId }],
+      endDate: { $lt: currentDate },
     });
 
     // Get total event earnings (from transactions)
@@ -329,15 +343,15 @@ const getUserStats = async (req, res) => {
         $match: {
           userID: userId,
           type: "credit",
-          description: { $regex: "event", $options: "i" }
-        }
+          description: { $regex: "event", $options: "i" },
+        },
       },
       {
         $group: {
           _id: null,
-          total: { $sum: "$amount" }
-        }
-      }
+          total: { $sum: "$amount" },
+        },
+      },
     ]);
 
     // Get total event spending
@@ -346,15 +360,15 @@ const getUserStats = async (req, res) => {
         $match: {
           userID: userId,
           type: "debit",
-          description: { $regex: "event", $options: "i" }
-        }
+          description: { $regex: "event", $options: "i" },
+        },
       },
       {
         $group: {
           _id: null,
-          total: { $sum: "$amount" }
-        }
-      }
+          total: { $sum: "$amount" },
+        },
+      },
     ]);
 
     res.status(200).json({
@@ -372,19 +386,21 @@ const getUserStats = async (req, res) => {
         pastEvents,
         eventEarnings: eventEarnings[0]?.total || 0,
         eventSpending: eventSpending[0]?.total || 0,
-        netEventEarnings: (eventEarnings[0]?.total || 0) - (eventSpending[0]?.total || 0)
-      }
+        netEventEarnings:
+          (eventEarnings[0]?.total || 0) - (eventSpending[0]?.total || 0),
+      },
     });
   } catch (error) {
     console.error("Error fetching user stats:", error);
     res.status(500).json({
       success: false,
       message: "Error while fetching user statistics",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
+// Change Email
 const changeEmailController = async (req, res) => {
   try {
     const { currentEmail, newEmail, password, otp } = req.body;
@@ -394,7 +410,7 @@ const changeEmailController = async (req, res) => {
     if (!currentEmail || !newEmail || !password) {
       return res.status(400).json({
         success: false,
-        message: "All fields are required"
+        message: "All fields are required",
       });
     }
 
@@ -403,7 +419,7 @@ const changeEmailController = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found"
+        message: "User not found",
       });
     }
 
@@ -411,7 +427,7 @@ const changeEmailController = async (req, res) => {
     if (user.email !== currentEmail) {
       return res.status(400).json({
         success: false,
-        message: "Current email does not match"
+        message: "Current email does not match",
       });
     }
 
@@ -420,7 +436,7 @@ const changeEmailController = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(400).json({
         success: false,
-        message: "Invalid password"
+        message: "Invalid password",
       });
     }
 
@@ -429,7 +445,7 @@ const changeEmailController = async (req, res) => {
     if (existingUser && existingUser._id.toString() !== userId.toString()) {
       return res.status(400).json({
         success: false,
-        message: "Email is already in use"
+        message: "Email is already in use",
       });
     }
 
@@ -438,7 +454,7 @@ const changeEmailController = async (req, res) => {
     if (!emailRegex.test(newEmail)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid email format"
+        message: "Invalid email format",
       });
     }
 
@@ -448,7 +464,7 @@ const changeEmailController = async (req, res) => {
       otpStore.set(userId, {
         otp: generatedOTP,
         newEmail,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       try {
@@ -456,13 +472,13 @@ const changeEmailController = async (req, res) => {
         return res.status(200).json({
           success: true,
           message: "Verification OTP sent to your new email address",
-          requiresOTP: true
+          requiresOTP: true,
         });
       } catch (error) {
         console.error("Error sending OTP:", error);
         return res.status(500).json({
           success: false,
-          message: "Failed to send verification email"
+          message: "Failed to send verification email",
         });
       }
     }
@@ -472,7 +488,7 @@ const changeEmailController = async (req, res) => {
     if (!storedOTP || storedOTP.otp !== otp) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired OTP"
+        message: "Invalid or expired OTP",
       });
     }
 
@@ -481,7 +497,7 @@ const changeEmailController = async (req, res) => {
       otpStore.delete(userId);
       return res.status(400).json({
         success: false,
-        message: "OTP has expired. Please request a new one."
+        message: "OTP has expired. Please request a new one.",
       });
     }
 
@@ -507,42 +523,47 @@ const changeEmailController = async (req, res) => {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        userName: user.userName
-      }
+        userName: user.userName,
+      },
     });
   } catch (error) {
     console.error("Error in change email:", error);
     return res.status(500).json({
       success: false,
-      message: "Error updating email"
+      message: "Error updating email",
     });
   }
 };
 
+// Change Password
 const changePasswordController = async (req, res) => {
   try {
     console.log("Change password request body:", req.body);
-    
+
     const { oldPassword, newPassword, confirmNewPassword, otp } = req.body;
 
     // Validate required fields
     if (!oldPassword || !newPassword || !confirmNewPassword) {
-      console.log("Missing required fields:", { oldPassword, newPassword, confirmNewPassword });
+      console.log("Missing required fields:", {
+        oldPassword,
+        newPassword,
+        confirmNewPassword,
+      });
       return res.status(400).json({
         success: false,
         message: "All fields are required",
         missingFields: {
           oldPassword: !oldPassword,
           newPassword: !newPassword,
-          confirmNewPassword: !confirmNewPassword
-        }
+          confirmNewPassword: !confirmNewPassword,
+        },
       });
     }
 
     // Get user from token
     const userId = req.user.userID;
     console.log("User ID from token:", userId);
-    
+
     const user = await userModel.findById(userId);
     console.log("Found user:", user ? "Yes" : "No");
 
@@ -587,7 +608,7 @@ const changePasswordController = async (req, res) => {
       console.log("No OTP provided, generating new OTP");
       const generatedOTP = generateOTP();
       console.log("Generated OTP:", generatedOTP);
-      
+
       otpStore.set(user.email, {
         otp: generatedOTP,
         timestamp: Date.now(),
@@ -676,6 +697,126 @@ const changePasswordController = async (req, res) => {
   }
 };
 
+// Send OTP for password reset
+const sendOtpForPasswordReset = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required",
+    });
+  }
+
+  // Generate OTP
+  const generatedOTP = generateOTP();
+  console.log("Generated OTP:", generatedOTP);
+
+  // OTP will be valid for 10 minutes
+  otpStore.set(email, {
+    otp: generatedOTP,
+    timestamp: Date.now(),
+  });
+
+  try {
+    await sendForgotPasswordEmail(email, generatedOTP);
+    return res.status(200).json({
+      success: true,
+      message: "Verification OTP sent to your email address",
+      requiresOTP: true,
+    });
+  } catch (error) {
+    console.error("Error sending OTP:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send verification email",
+    });
+  }
+};
+
+// Verify OTP for password reset
+const verifyOtpForPasswordReset = async (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({
+      success: false,
+      message: "Email and OTP are required",
+    });
+  }
+
+  const storedOTP = otpStore.get(email);
+  if (!storedOTP || storedOTP.otp !== otp) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid or expired OTP",
+    });
+  }
+
+  // Check if OTP is expired (10 minutes)
+  if (Date.now() - storedOTP.timestamp > 10 * 60 * 1000) {
+    otpStore.delete(email);
+    return res.status(400).json({
+      success: false,
+      message: "OTP has expired. Please request a new one.",
+    });
+  }
+
+  // Clear OTP from store
+  otpStore.delete(email);
+
+  return res.status(200).json({
+    success: true,
+    message: "OTP verified successfully",
+  });
+};
+
+// Save new password after OTP verification
+const saveNewPassword = async (req, res) => {
+  const { email, newPassword } = req.body;
+
+  if (!email || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "Email and new password are required",
+    });
+  }
+
+  // Validate password length
+  if (newPassword.length < 8) {
+    return res.status(400).json({
+      success: false,
+      message: "Password must be at least 8 characters long",
+    });
+  }
+
+  try {
+    const user = await userModel.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await hashPassword(newPassword);
+    user.password = hashedPassword;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password updated successfully",
+    });
+  } catch (error) {
+    console.error("Error saving new password:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating password",
+    });
+  }
+};
+
 module.exports = {
   registerController,
   loginController,
@@ -685,4 +826,7 @@ module.exports = {
   getUserStats,
   changeEmailController,
   changePasswordController,
+  saveNewPassword,
+  sendOtpForPasswordReset,
+  verifyOtpForPasswordReset,
 };

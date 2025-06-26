@@ -30,12 +30,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["Admin", "User"],
       default: "User",
-    },
-    email: {
+    },    email: {
       type: String,
       required: [true, "Please add Email"],
       unique: true,
       trim: true,
+      lowercase: true, // Ensures email is always stored in lowercase
     },
     password: {
       type: String,

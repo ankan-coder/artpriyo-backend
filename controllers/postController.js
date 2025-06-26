@@ -8,28 +8,28 @@ const toggleLike = async (req, res) => {
   try {
     const { postID } = req.params;
     let post;
-    
+
     // Try to find post by postID first
     post = await Post.findOne({ postID });
-    
+
     // If not found, check if postID is a valid MongoDB ID and try to find by _id
     if (!post && mongoose.Types.ObjectId.isValid(postID)) {
       post = await Post.findById(postID);
     }
-    
+
     if (!post) {
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
-    
+
     // Check if user has already liked the post
     const userHasLiked = post.likedBy && post.likedBy.includes(req.user.userID);
-    
+
     if (userHasLiked) {
       // Unlike: Remove user from likedBy array and decrement likes count
-      post.likedBy = post.likedBy.filter(id => id !== req.user.userID);
+      post.likedBy = post.likedBy.filter((id) => id !== req.user.userID);
       post.likes = Math.max(0, post.likes - 1); // Ensure likes don't go below 0
     } else {
       // Like: Add user to likedBy array and increment likes count
@@ -39,12 +39,14 @@ const toggleLike = async (req, res) => {
       post.likedBy.push(req.user.userID);
       post.likes += 1;
     }
-    
+
     await post.save();
-    
+
     res.status(200).json({
       success: true,
-      message: userHasLiked ? "Post unliked successfully" : "Post liked successfully",
+      message: userHasLiked
+        ? "Post unliked successfully"
+        : "Post liked successfully",
       likes: post.likes,
       userHasLiked: !userHasLiked,
     });
@@ -63,25 +65,25 @@ const getLikeStatus = async (req, res) => {
   try {
     const { postID } = req.params;
     let post;
-    
+
     // Try to find post by postID first
     post = await Post.findOne({ postID });
-    
+
     // If not found, check if postID is a valid MongoDB ID and try to find by _id
     if (!post && mongoose.Types.ObjectId.isValid(postID)) {
       post = await Post.findById(postID);
     }
-    
+
     if (!post) {
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
-    
+
     // Check if user has liked the post
     const userHasLiked = post.likedBy && post.likedBy.includes(req.user.userID);
-    
+
     res.status(200).json({
       success: true,
       likes: post.likes,
@@ -103,27 +105,31 @@ const getTrendingPosts = async (req, res) => {
     // Get the current date and date 24 hours ago
     const now = new Date();
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    
+
     // First get brand new posts (from the last 24 hours)
     const brandNewPosts = await Post.find({
-      createdAt: { $gte: yesterday }
-    }).sort({ createdAt: -1 }).limit(5);
-    
+      createdAt: { $gte: yesterday },
+    })
+      .sort({ createdAt: -1 })
+      .limit(5);
+
     // Then get trending posts by likes
     // Exclude posts that are already in brandNewPosts
-    const brandNewPostIds = brandNewPosts.map(post => post._id.toString());
-    
+    const brandNewPostIds = brandNewPosts.map((post) => post._id.toString());
+
     const trendingPosts = await Post.find({
-      _id: { $nin: brandNewPostIds }
-    }).sort({ likes: -1 }).limit(10 - brandNewPosts.length);
-    
+      _id: { $nin: brandNewPostIds },
+    })
+      .sort({ likes: -1 })
+      .limit(10 - brandNewPosts.length);
+
     // Combine the posts, with brand new ones first
     const combinedPosts = [...brandNewPosts, ...trendingPosts];
-    
+
     // Check if request has authorization header (optional auth)
     const authHeader = req.headers.authorization;
     let userID = null;
-    
+
     if (authHeader) {
       try {
         const token = authHeader.split(" ")[1];
@@ -131,36 +137,38 @@ const getTrendingPosts = async (req, res) => {
         userID = decoded._id;
       } catch (err) {
         // Invalid token - proceed without user context
-        console.log("Invalid token in trending-posts, proceeding without user context");
+        console.log(
+          "Invalid token in trending-posts, proceeding without user context"
+        );
       }
     }
 
     const postsWithUserDetails = await Promise.all(
       combinedPosts.map(async (post) => {
         const user = await User.findById(post.userID);
-        
+
         // Convert post to plain object to allow adding custom properties
         const postObj = post.toObject();
-        
+
         // Add user data
         postObj.user = user;
-        
+
         // Add userHasLiked flag if user is authenticated
         if (userID) {
           postObj.userHasLiked = post.likedBy && post.likedBy.includes(userID);
         }
-        
+
         // Ensure the _id field is included (for frontend compatibility)
         postObj._id = postObj._id || post._id;
-        
+
         // For frontend compatibility (frontend expects likes to be an array)
         // We'll include both the numeric likes count and the likedBy array
         postObj.likesCount = post.likes;
         postObj.likes = post.likedBy || [];
-        
+
         // Include comments count
         postObj.commentsCount = post.commentsCount || 0;
-        
+
         // Add a flag to indicate if this is a brand new post
         postObj.isBrandNew = new Date(post.createdAt) >= yesterday;
 
@@ -168,8 +176,8 @@ const getTrendingPosts = async (req, res) => {
       })
     );
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       posts: postsWithUserDetails,
     });
   } catch (error) {
@@ -187,22 +195,22 @@ const savePost = async (req, res) => {
   try {
     const { postID } = req.params;
     let post;
-    
+
     // Try to find post by postID first
     post = await Post.findOne({ postID });
-    
+
     // If not found, check if postID is a valid MongoDB ID and try to find by _id
     if (!post && mongoose.Types.ObjectId.isValid(postID)) {
       post = await Post.findById(postID);
     }
-    
+
     if (!post) {
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
-    
+
     // Check if user has already saved the post
     if (post.savedBy && post.savedBy.includes(req.user.userID)) {
       return res.status(400).json({
@@ -210,15 +218,15 @@ const savePost = async (req, res) => {
         message: "Post already saved",
       });
     }
-    
+
     // Add user to savedBy array
     if (!post.savedBy) {
       post.savedBy = [];
     }
     post.savedBy.push(req.user.userID);
-    
+
     await post.save();
-    
+
     res.status(200).json({
       success: true,
       message: "Post saved successfully",
@@ -238,22 +246,22 @@ const unsavePost = async (req, res) => {
   try {
     const { postID } = req.params;
     let post;
-    
+
     // Try to find post by postID first
     post = await Post.findOne({ postID });
-    
+
     // If not found, check if postID is a valid MongoDB ID and try to find by _id
     if (!post && mongoose.Types.ObjectId.isValid(postID)) {
       post = await Post.findById(postID);
     }
-    
+
     if (!post) {
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
-    
+
     // Check if user has saved the post
     if (!post.savedBy || !post.savedBy.includes(req.user.userID)) {
       return res.status(400).json({
@@ -261,12 +269,12 @@ const unsavePost = async (req, res) => {
         message: "Post not saved",
       });
     }
-    
+
     // Remove user from savedBy array
-    post.savedBy = post.savedBy.filter(id => id !== req.user.userID);
-    
+    post.savedBy = post.savedBy.filter((id) => id !== req.user.userID);
+
     await post.save();
-    
+
     res.status(200).json({
       success: true,
       message: "Post unsaved successfully",
@@ -286,25 +294,25 @@ const checkSavedStatus = async (req, res) => {
   try {
     const { postID } = req.params;
     let post;
-    
+
     // Try to find post by postID first
     post = await Post.findOne({ postID });
-    
+
     // If not found, check if postID is a valid MongoDB ID and try to find by _id
     if (!post && mongoose.Types.ObjectId.isValid(postID)) {
       post = await Post.findById(postID);
     }
-    
+
     if (!post) {
       return res.status(404).json({
         success: false,
         message: "Post not found",
       });
     }
-    
+
     // Check if user has saved the post
     const isSaved = post.savedBy && post.savedBy.includes(req.user.userID);
-    
+
     res.status(200).json({
       success: true,
       isSaved,
@@ -324,30 +332,31 @@ const getSavedPosts = async (req, res) => {
   try {
     // Find all posts that have the current user in their savedBy array
     const posts = await Post.find({
-      savedBy: { $in: [req.user.userID] }
+      savedBy: { $in: [req.user.userID] },
     }).sort({ createdAt: -1 });
 
     // Get user details for each post
     const postsWithUserDetails = await Promise.all(
       posts.map(async (post) => {
         const user = await User.findById(post.userID);
-        
+
         // Convert post to plain object to allow adding custom properties
         const postObj = post.toObject();
-        
+
         // Add user data
         postObj.user = user;
-        
+
         // Add userHasLiked flag
-        postObj.userHasLiked = post.likedBy && post.likedBy.includes(req.user.userID);
-        
+        postObj.userHasLiked =
+          post.likedBy && post.likedBy.includes(req.user.userID);
+
         // Ensure the _id field is included (for frontend compatibility)
         postObj._id = postObj._id || post._id;
-        
+
         // For frontend compatibility (frontend expects likes to be an array)
         postObj.likesCount = post.likes;
         postObj.likes = post.likedBy || [];
-        
+
         // Include comments count
         postObj.commentsCount = post.commentsCount || 0;
 
@@ -372,47 +381,49 @@ const getSavedPosts = async (req, res) => {
 // Get posts made by the current user
 const getUserPosts = async (req, res) => {
   try {
-    const currentUser = req.user._id;
-    console.log('Fetching posts for user:', currentUser);
+    // Get user ID from params or use authenticated user's ID
+    const userId = req.params.userId || req.user._id;
 
-    // Find all posts created by the current user
-    const posts = await Post.find({ userID: currentUser })
-      .sort({ createdAt: -1 });
-    
-    console.log('Found posts:', posts);
+    // Find all posts for the user
+    const posts = await Post.find({ userID: userId }).sort({ createdAt: -1 });
+
+    // Get post count for the user
+    const postCount = await Post.countDocuments({ userID: userId });
 
     // Format posts with user data and like status
-    const formattedPosts = await Promise.all(posts.map(async (post) => {
-      const postObj = post.toObject();
-      const user = await User.findById(post.userID);
-      
-      return {
-        ...postObj,
-        user: {
-          _id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          userName: user.userName,
-          image: user.image,
-        },
-        userHasLiked: post.likedBy.includes(currentUser),
-        likesCount: post.likes,
-        commentsCount: post.commentsCount,
-      };
-    }));
+    const formattedPosts = await Promise.all(
+      posts.map(async (post) => {
+        const postObj = post.toObject();
+        const user = await User.findById(post.userID);
 
-    console.log('Formatted posts:', formattedPosts);
+        return {
+          ...postObj,
+          user: {
+            _id: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            userName: user.userName,
+            image: user.image,
+          },
+          userHasLiked: post.likedBy.includes(req.user._id),
+          likesCount: post.likes,
+          commentsCount: post.commentsCount,
+        };
+      })
+    );
 
     res.status(200).json({
       success: true,
       posts: formattedPosts,
+      totalPosts: posts.length, // Total number of posts in the response
+      postCount: postCount, // Total number of posts in the database
     });
   } catch (error) {
-    console.error('Error in getUserPosts:', error);
+    console.error("Error in getUserPosts:", error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching user posts',
-      error: error.message
+      message: "Error fetching user posts",
+      error: error.message,
     });
   }
 };
@@ -425,7 +436,7 @@ const updatePost = async (req, res) => {
 
     // Find the post
     let post = await Post.findOne({ postID });
-    
+
     // If not found, check if postID is a valid MongoDB ID and try to find by _id
     if (!post && mongoose.Types.ObjectId.isValid(postID)) {
       post = await Post.findById(postID);
@@ -478,7 +489,7 @@ const deletePost = async (req, res) => {
 
     // Find the post
     let post = await Post.findOne({ postID });
-    
+
     // If not found, check if postID is a valid MongoDB ID and try to find by _id
     if (!post && mongoose.Types.ObjectId.isValid(postID)) {
       post = await Post.findById(postID);
@@ -527,4 +538,4 @@ module.exports = {
   getUserPosts,
   updatePost,
   deletePost,
-}; 
+};
